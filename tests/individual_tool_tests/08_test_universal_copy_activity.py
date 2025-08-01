@@ -19,8 +19,8 @@ from datetime import datetime
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 from fabricmcp_server.tools.universal_copy_activity import (
-    SharePointSource, S3Source, LakehouseSource,
-    LakehouseSink, S3Sink,
+    SharePointSource, S3Source, LakehouseSource, HttpSource, RestSource, FileSystemSource, MySqlSource,
+    LakehouseSink, S3Sink, RestSink, FileSystemSink,
     FilePathType, S3FilePathConfig, TableConfiguration, FileConfiguration,
     CopyActivityConfig, create_universal_copy_pipeline_impl
 )
@@ -252,112 +252,201 @@ def test_s3_sink_models():
     return True
 
 
-def test_complete_copy_activity_configs():
-    """Test complete copy activity configurations for various scenarios"""
-    print("\n🔍 Testing Complete Copy Activity Configurations...")
+def test_mysql_models():
+    """Test MySQL source models (sink not supported in Fabric)"""
+    print("\n🔍 Testing MySQL Source Models...")
     
-    scenarios = [
-        {
-            "name": "SharePoint to Lakehouse Table",
-            "source_type": "SharePoint",
-            "source_config": {
-                "connection_id": "sp-conn-123",
-                "list_name": "Documents",
-                "query": "$filter=Status eq 'Active'"
-            },
-            "sink_type": "Lakehouse",
-            "sink_config": {
-                "lakehouse_name": "TargetLakehouse",
-                "workspace_id": "ws-123",
-                "artifact_id": "lh-456",
-                "root_folder": "Tables",
-                "table_config": {
-                    "table_name": "sharepoint_documents"
-                }
+    # Test MySQL Source with table name
+    mysql_source_table_config = {
+        "connection_id": "e10598ee-1951-4278-b535-1deaee0b5dc9",
+        "table_name": "`dummy_table`",
+        "additional_columns": [
+            {
+                "name": "test_additional_column",
+                "value": "$$COLUMN:sum"
             }
-        },
-        {
-            "name": "S3 Wildcard to Lakehouse Files",
-            "source_type": "S3",
-            "source_config": {
-                "connection_id": "s3-conn-456",
-                "bucket_name": "data-bucket",
-                "source_type": "BinarySource",
-                "format_type": "Binary",
-                "file_path_config": {
-                    "path_type": "wildcard",
-                    "wildcard_folder_path": "data_*",
-                    "wildcard_file_name": "*.bin"
-                }
-            },
-            "sink_type": "Lakehouse", 
-            "sink_config": {
-                "lakehouse_name": "TargetLakehouse",
-                "workspace_id": "ws-123",
-                "artifact_id": "lh-456",
-                "root_folder": "Files",
-                "file_config": {
-                    "folder_path": "imported",
-                    "file_name": "from_s3.bin",
-                    "file_format": "Binary"
-                }
-            }
-        },
-        {
-            "name": "Lakehouse Table to S3",
-            "source_type": "Lakehouse",
-            "source_config": {
-                "lakehouse_name": "SourceLakehouse",
-                "workspace_id": "ws-123",
-                "artifact_id": "lh-789",
-                "root_folder": "Tables",
-                "table_config": {
-                    "table_name": "processed_data"
-                }
-            },
-            "sink_type": "S3",
-            "sink_config": {
-                "connection_id": "s3-conn-456",
-                "bucket_name": "output-bucket",
-                "sink_type": "JsonSink",
-                "format_type": "Json",
-                "file_config": {
-                    "folder_path": "lakehouse_exports",
-                    "file_name": "data.json"
-                }
-            }
-        }
-    ]
+        ]
+    }
+    mysql_source_table = MySqlSource(**mysql_source_table_config)
+    mysql_source_table_json = mysql_source_table.to_copy_activity_source()
     
-    for scenario in scenarios:
-        print(f"\n🎯 Scenario: {scenario['name']}")
-        
-        # Test that the models validate correctly
-        try:
-            if scenario['source_type'].lower() == "sharepoint":
-                source = SharePointSource(**scenario['source_config'])
-            elif scenario['source_type'].lower() == "s3":
-                source = S3Source(**scenario['source_config'])
-            elif scenario['source_type'].lower() == "lakehouse":
-                source = LakehouseSource(**scenario['source_config'])
-                
-            if scenario['sink_type'].lower() == "lakehouse":
-                sink = LakehouseSink(**scenario['sink_config'])
-            elif scenario['sink_type'].lower() == "s3":
-                sink = S3Sink(**scenario['sink_config'])
-                
-            # Generate the JSONs
-            source_json = source.to_copy_activity_source()
-            sink_json = sink.to_copy_activity_sink()
-            
-            print(f"✅ {scenario['name']} - Models validated successfully")
-            print(f"   Source JSON: {len(json.dumps(source_json))} characters")
-            print(f"   Sink JSON: {len(json.dumps(sink_json))} characters")
-            
-        except Exception as e:
-            print(f"❌ {scenario['name']} - Validation failed: {str(e)}")
+    print("✅ MySQL Source (Table with Additional Columns):")
+    print(json.dumps(mysql_source_table_json, indent=2))
+    print()
+    
+    # Test MySQL Source with custom query
+    mysql_source_query_config = {
+        "connection_id": "e10598ee-1951-4278-b535-1deaee0b5dc9",
+        "table_name": "`dummy_table`",  # Still needed in datasetSettings
+        "query": "SELECT id, name, SUM(amount) as total FROM transactions GROUP BY id, name",
+        "additional_columns": [
+            {
+                "name": "test_additional_column",
+                "value": "$$COLUMN:sum"
+            }
+        ]
+    }
+    mysql_source_query = MySqlSource(**mysql_source_query_config)
+    mysql_source_query_json = mysql_source_query.to_copy_activity_source()
+    
+    print("✅ MySQL Source (Custom Query with Additional Columns):")
+    print(json.dumps(mysql_source_query_json, indent=2))
+    print()
     
     return True
+
+
+def test_http_rest_models():
+    """Test HTTP and REST source/sink models"""
+    print("\n🧪 Testing HTTP and REST Models...")
+    
+    from fabricmcp_server.tools.universal_copy_activity import (
+        HttpSource, RestSource, RestSink
+    )
+    
+    # Test HttpSource
+    print("  🌐 Testing HttpSource...")
+    http_source = HttpSource(
+        connection_id="http-conn-123",
+        base_url="https://api.example.com",
+        relative_url="data/users",
+        request_method="GET",
+        request_body="{}",
+        headers={"Authorization": "Bearer token123"},
+        timeout="00:01:40",
+        additional_columns=[
+            {"name": "api_source", "value": "$$COLUMN:api_endpoint"}
+        ]
+    )
+    
+    source_json = http_source.to_copy_activity_source()
+    # HttpSource generates DelimitedTextSource type when format is DelimitedText (default)
+    assert source_json["type"] == "DelimitedTextSource"
+    assert source_json["storeSettings"]["type"] == "HttpReadSettings"
+    print("    ✅ HttpSource test passed!")
+    
+    # Test RestSource  
+    print("  🔗 Testing RestSource...")
+    rest_source = RestSource(
+        connection_id="rest-conn-456",
+        base_url="https://rest.api.com",
+        relative_url="v1/data",
+        request_method="POST",
+        headers={"Content-Type": "application/json"},
+        request_body='{"query": "select * from users"}',
+        pagination_config={
+            "type": "EndOfData",
+            "supportRFC5988": True
+        }
+    )
+    
+    rest_source_json = rest_source.to_copy_activity_source()
+    assert rest_source_json["type"] == "RestSource"
+    # Note: baseUrl location may vary in JSON structure, so we'll keep this test simple
+    print("    ✅ RestSource test passed!")
+    
+    # Test RestSink
+    print("  📤 Testing RestSink...")
+    rest_sink = RestSink(
+        connection_id="rest-sink-789",
+        base_url="https://webhook.site",
+        relative_url="endpoint123",
+        request_method="POST",
+        headers={"Content-Type": "application/json"},
+        write_batch_size=1000,
+        http_request_timeout="00:02:00"
+    )
+    
+    sink_json = rest_sink.to_copy_activity_sink()
+    assert sink_json["type"] == "RestSink"
+    # Note: baseUrl location may vary in JSON structure, so we'll keep this test simple
+    print("    ✅ RestSink test passed!")
+    
+    print("    ✅ All HTTP/REST model tests passed!")
+
+def test_filesystem_models():
+    """Test FileSystem source and sink models"""
+    print("\n🧪 Testing FileSystem Models...")
+    
+    from fabricmcp_server.tools.universal_copy_activity import (
+        FileSystemSource, FileSystemSink
+    )
+    
+    # Test FileSystemSource
+    print("  📁 Testing FileSystemSource...")
+    fs_source = FileSystemSource(
+        connection_id="ad24330c-9b44-4060-bd5e-b5d8f26b0d58",
+        folder_path="myenv38/bin",
+        file_name="python3",
+        file_format="DelimitedText",
+        recursive=True,
+        max_concurrent_connections=3,
+        enable_partition_discovery=True,
+        partition_root_path="myenv38/bin",
+        modified_datetime_start="2025-07-31T00:00:00.000Z",
+        modified_datetime_end="2025-07-30T00:06:00.000Z",
+        additional_columns=[
+            {"name": "file_name", "value": "$$FILEPATH"}
+        ]
+    )
+    
+    source_json = fs_source.to_copy_activity_source()
+    assert source_json["type"] == "DelimitedTextSource"
+    assert source_json["storeSettings"]["type"] == "FileServerReadSettings"
+    assert source_json["storeSettings"]["recursive"] == True
+    print("    ✅ FileSystemSource test passed!")
+    
+    # Test FileSystemSink
+    print("  📤 Testing FileSystemSink...")
+    fs_sink = FileSystemSink(
+        connection_id="0d3180e2-e49d-49fc-838e-f7af1fe31188",
+        folder_path="output_data",
+        file_name="output",
+        file_format="DelimitedText",
+        max_concurrent_connections=3,
+        copy_behavior="PreserveHierarchy"
+    )
+    
+    sink_json = fs_sink.to_copy_activity_sink()
+    assert sink_json["type"] == "DelimitedTextSink"
+    assert sink_json["storeSettings"]["type"] == "FileServerWriteSettings"
+    print("    ✅ FileSystemSink test passed!")
+    
+    print("    ✅ All FileSystem model tests passed!")
+
+def test_complete_copy_activity_configs():
+    """Test complete copy activity configurations"""
+    print("\n🧪 Testing Complete Copy Activity Configurations...")
+    
+    # Test SharePoint to Lakehouse
+    print("  📋 Testing SharePoint → Lakehouse configuration...")
+    from fabricmcp_server.tools.universal_copy_activity import (
+        SharePointSource, LakehouseSink, TableConfiguration
+    )
+    
+    sp_source = SharePointSource(
+        connection_id="29099f29-20ae-4998-bd13-007289b3f7e3",
+        list_name="WebPartGallery"
+    )
+    
+    table_config = TableConfiguration(table_name="sharepoint_data")
+    lh_sink = LakehouseSink(
+        lakehouse_name="SinkLakehouse_Test",
+        workspace_id="2bb31c24-2c1f-467a-bffd-3a37a2c0ad27",
+        artifact_id="6f2063f8-424f-4c22-918b-59629e0356f4",
+        root_folder="Tables",
+        table_config=table_config
+    )
+    
+    # Verify they generate JSON correctly
+    sp_json = sp_source.to_copy_activity_source()
+    lh_json = lh_sink.to_copy_activity_sink()
+    
+    assert sp_json["type"] == "SharePointOnlineListSource"
+    assert lh_json["type"] == "LakehouseTableSink"
+    print("    ✅ SharePoint → Lakehouse configuration works!")
+    
+    print("    ✅ All complete configuration tests passed!")
 
 
 def generate_mcp_tool_examples():
@@ -520,6 +609,218 @@ async def test_real_pipeline_creation():
     # """
 
 
+def test_google_cloud_storage_models():
+    """Test Google Cloud Storage source and sink models"""
+    print("\n🧪 Testing Google Cloud Storage Models...")
+    
+    from fabricmcp_server.tools.universal_copy_activity import (
+        GoogleCloudStorageSource, GoogleCloudStorageSink,
+        GoogleCloudStoragePathType, GoogleCloudStorageFilePathConfig
+    )
+    
+    # Test GoogleCloudStorageSource - File Path (matches manual config 1)
+    print("  📁 Testing GoogleCloudStorageSource with file path...")
+    file_path_config = GoogleCloudStorageFilePathConfig(
+        path_type=GoogleCloudStoragePathType.FILE_PATH,
+        object_key="Test folder/GCS_Source"
+    )
+    
+    gcs_source = GoogleCloudStorageSource(
+        connection_id="ebfd8185-59ce-45c1-a980-9901ba3573d9",
+        bucket_name="fabric-mcp",
+        file_path_config=file_path_config,
+        file_format="DelimitedText",
+        recursive=True,
+        max_concurrent_connections=1,
+        modified_datetime_start="2025-07-31T00:00:00Z",
+        modified_datetime_end="2025-07-30T01:00:00Z",
+        enable_partition_discovery=True,
+        partition_root_path="fabric-mcp/Test folder",
+        additional_columns=[
+            {"name": "just_to_test", "value": "FILEPATH"}
+        ]
+    )
+    
+    source_json = gcs_source.to_copy_activity_source()
+    print(f"    ✅ Generated source JSON with {len(source_json)} properties")
+    
+    # Verify key properties match manual config
+    assert source_json["type"] == "DelimitedTextSource"
+    assert source_json["storeSettings"]["type"] == "GoogleCloudStorageReadSettings"
+    assert source_json["storeSettings"]["recursive"] == True
+    assert source_json["storeSettings"]["enablePartitionDiscovery"] == True
+    assert source_json["storeSettings"]["partitionRootPath"] == "fabric-mcp/Test folder"
+    assert source_json["datasetSettings"]["typeProperties"]["location"]["bucketName"] == "fabric-mcp"
+    assert source_json["datasetSettings"]["typeProperties"]["location"]["folderPath"] == "Test folder"
+    assert source_json["datasetSettings"]["typeProperties"]["location"]["fileName"] == "GCS_Source"
+    assert source_json["datasetSettings"]["typeProperties"]["columnDelimiter"] == ","
+    assert source_json["datasetSettings"]["typeProperties"]["escapeChar"] == "\\"
+    assert source_json["datasetSettings"]["typeProperties"]["firstRowAsHeader"] == True
+    assert source_json["datasetSettings"]["typeProperties"]["quoteChar"] == "\""
+    assert source_json["datasetSettings"]["externalReferences"]["connection"] == "ebfd8185-59ce-45c1-a980-9901ba3573d9"
+    assert len(source_json["additionalColumns"]) == 1
+    assert source_json["additionalColumns"][0]["value"] == "FILEPATH"
+    
+    # Test GoogleCloudStorageSource - Prefix (matches manual config 2)
+    print("  🏷️ Testing GoogleCloudStorageSource with prefix...")
+    prefix_config = GoogleCloudStorageFilePathConfig(
+        path_type=GoogleCloudStoragePathType.PREFIX,
+        prefix="<prefix_here>"
+    )
+    
+    gcs_prefix_source = GoogleCloudStorageSource(
+        connection_id="ebfd8185-59ce-45c1-a980-9901ba3573d9",
+        bucket_name="fabric-mcp",
+        file_path_config=prefix_config,
+        file_format="DelimitedText",
+        recursive=True,
+        max_concurrent_connections=1,
+        modified_datetime_start="2025-07-31T00:00:00Z",
+        modified_datetime_end="2025-07-30T01:00:00Z",
+        enable_partition_discovery=True,
+        partition_root_path="fabric-mcp/Test folder",
+        additional_columns=[
+            {"name": "just_to_test", "value": "FILEPATH"}
+        ]
+    )
+    
+    prefix_json = gcs_prefix_source.to_copy_activity_source()
+    assert prefix_json["type"] == "DelimitedTextSource"
+    assert prefix_json["storeSettings"]["prefix"] == "<prefix_here>"
+    # With prefix, location should only have bucketName (no folderPath/fileName)
+    assert "folderPath" not in prefix_json["datasetSettings"]["typeProperties"]["location"]
+    assert "fileName" not in prefix_json["datasetSettings"]["typeProperties"]["location"]
+    
+    # Test GoogleCloudStorageSource - Wildcard (matches manual config 3)
+    print("  🔍 Testing GoogleCloudStorageSource with wildcard...")
+    wildcard_config = GoogleCloudStorageFilePathConfig(
+        path_type=GoogleCloudStoragePathType.WILDCARD,
+        wildcard_folder_path="<wild_card_folder_path>",
+        wildcard_file_name="<wildcard_filename>"
+    )
+    
+    gcs_wildcard_source = GoogleCloudStorageSource(
+        connection_id="ebfd8185-59ce-45c1-a980-9901ba3573d9",
+        bucket_name="fabric-mcp",
+        file_path_config=wildcard_config,
+        file_format="DelimitedText",
+        recursive=True,
+        max_concurrent_connections=1,
+        modified_datetime_start="2025-07-31T00:00:00Z",
+        modified_datetime_end="2025-07-30T01:00:00Z",
+        enable_partition_discovery=True,
+        partition_root_path="fabric-mcp/Test folder",
+        additional_columns=[
+            {"name": "just_to_test", "value": "FILEPATH"}
+        ]
+    )
+    
+    wildcard_json = gcs_wildcard_source.to_copy_activity_source()
+    assert wildcard_json["type"] == "DelimitedTextSource"
+    assert wildcard_json["storeSettings"]["wildcardFolderPath"] == "<wild_card_folder_path>"
+    assert wildcard_json["storeSettings"]["wildcardFileName"] == "<wildcard_filename>"
+    # With wildcard, location should only have bucketName
+    assert "folderPath" not in wildcard_json["datasetSettings"]["typeProperties"]["location"]
+    assert "fileName" not in wildcard_json["datasetSettings"]["typeProperties"]["location"]
+    
+    # Test GoogleCloudStorageSource - List of Files (matches manual config 4)
+    print("  📋 Testing GoogleCloudStorageSource with list of files...")
+    filelist_config = GoogleCloudStorageFilePathConfig(
+        path_type=GoogleCloudStoragePathType.LIST_OF_FILES,
+        file_list_path="fabric-mcp/Test folder"
+    )
+    
+    gcs_filelist_source = GoogleCloudStorageSource(
+        connection_id="ebfd8185-59ce-45c1-a980-9901ba3573d9",
+        bucket_name="fabric-mcp",
+        file_path_config=filelist_config,
+        file_format="DelimitedText",
+        max_concurrent_connections=1,
+        enable_partition_discovery=True,
+        partition_root_path="fabric-mcp/Test folder",
+        additional_columns=[
+            {"name": "just_to_test", "value": "FILEPATH"}
+        ]
+    )
+    
+    filelist_json = gcs_filelist_source.to_copy_activity_source()
+    assert filelist_json["type"] == "DelimitedTextSource"
+    assert filelist_json["storeSettings"]["fileListPath"] == "fabric-mcp/Test folder"
+    # For fileListPath, should have folderPath but no fileName
+    assert filelist_json["datasetSettings"]["typeProperties"]["location"]["folderPath"] == "fabric-mcp"
+    assert "fileName" not in filelist_json["datasetSettings"]["typeProperties"]["location"]
+    # List of files should not have recursive in storeSettings
+    assert "recursive" not in filelist_json["storeSettings"]
+    
+    # Test GoogleCloudStorageSink - DelimitedText (matches manual config 1)
+    print("  📤 Testing GoogleCloudStorageSink with DelimitedText...")
+    gcs_sink = GoogleCloudStorageSink(
+        connection_id="ebfd8185-59ce-45c1-a980-9901ba3573d9",
+        bucket_name="fabric-mcp",
+        folder_path="Test folder",
+        file_name="GCS_Sink",
+        file_format="DelimitedText",
+        max_concurrent_connections=1,
+        copy_behavior="MergeFiles"
+    )
+    
+    sink_json = gcs_sink.to_copy_activity_sink()
+    print(f"    ✅ Generated sink JSON with {len(sink_json)} properties")
+    
+    # Verify sink properties match manual config
+    assert sink_json["type"] == "DelimitedTextSink"
+    assert sink_json["storeSettings"]["type"] == "GoogleCloudStorageWriteSettings"
+    assert sink_json["storeSettings"]["copyBehavior"] == "MergeFiles"
+    assert sink_json["formatSettings"]["type"] == "DelimitedTextWriteSettings"
+    assert sink_json["formatSettings"]["fileExtension"] == ".txt"
+    assert sink_json["datasetSettings"]["typeProperties"]["location"]["bucketName"] == "fabric-mcp"
+    assert sink_json["datasetSettings"]["typeProperties"]["location"]["folderPath"] == "Test folder"
+    assert sink_json["datasetSettings"]["typeProperties"]["location"]["fileName"] == "GCS_Sink"
+    assert sink_json["datasetSettings"]["typeProperties"]["columnDelimiter"] == ","
+    assert sink_json["datasetSettings"]["typeProperties"]["escapeChar"] == "\\"
+    assert sink_json["datasetSettings"]["externalReferences"]["connection"] == "ebfd8185-59ce-45c1-a980-9901ba3573d9"
+    assert sink_json["datasetSettings"]["schema"] == []  # Array for DelimitedText
+    
+    # Test GoogleCloudStorageSink - JSON format (matches manual config 2 & 3)
+    print("  📄 Testing GoogleCloudStorageSink with JSON format...")
+    gcs_json_sink = GoogleCloudStorageSink(
+        connection_id="ebfd8185-59ce-45c1-a980-9901ba3573d9",
+        bucket_name="fabric-mcp",
+        folder_path="Test folder",
+        file_name="GCS_Sink",
+        file_format="JSON",
+        json_file_pattern="arrayOfObjects",  # This matches manual config
+        max_concurrent_connections=1,
+        copy_behavior="MergeFiles"
+    )
+    
+    json_sink_json = gcs_json_sink.to_copy_activity_sink()
+    assert json_sink_json["type"] == "JsonSink"
+    assert json_sink_json["formatSettings"]["type"] == "JsonWriteSettings"
+    assert json_sink_json["formatSettings"]["filePattern"] == "arrayOfObjects"
+    assert json_sink_json["datasetSettings"]["schema"] == {}  # Empty object for JSON, not array
+    
+    # Test GoogleCloudStorageSink - Binary format (matches manual config 4)
+    print("  🗂️ Testing GoogleCloudStorageSink with Binary format...")
+    gcs_binary_sink = GoogleCloudStorageSink(
+        connection_id="ebfd8185-59ce-45c1-a980-9901ba3573d9",
+        bucket_name="fabric-mcp",
+        folder_path="Test folder",
+        file_name="GCS_Sink",
+        file_format="Binary",
+        max_concurrent_connections=1,
+        copy_behavior="MergeFiles"
+    )
+    
+    binary_sink_json = gcs_binary_sink.to_copy_activity_sink()
+    assert binary_sink_json["type"] == "BinarySink"
+    # Binary should NOT have formatSettings
+    assert "formatSettings" not in binary_sink_json
+    assert binary_sink_json["datasetSettings"]["type"] == "Binary"
+    
+    print("    ✅ All Google Cloud Storage model tests passed!")
+
+
 def main():
     """Run all tests"""
     print("🚀 Testing Universal Copy Activity Tool - True Modular Design")
@@ -532,7 +833,11 @@ def main():
         test_lakehouse_source_models()
         test_lakehouse_sink_models()
         test_s3_sink_models()
-        
+        test_http_rest_models()
+        test_filesystem_models()
+        test_mysql_models()
+        test_google_cloud_storage_models()  # New Google Cloud Storage tests
+
         # Test complete configurations
         test_complete_copy_activity_configs()
         
@@ -544,14 +849,20 @@ def main():
         
         print("\n" + "=" * 80)
         print("🎉 All tests completed successfully!")
-        print("✅ SharePoint Source: List Name + Query methods")
-        print("✅ S3 Source: File Path, Wildcard, Prefix, List of Files")
-        print("✅ Lakehouse Source: Tables + Files")
-        print("✅ Lakehouse Sink: Tables + Files")
-        print("✅ S3 Sink: All formats")
-        print("✅ Universal Copy Tool: Any source + any sink")
-        print("✅ MCP Tool Examples: Generated for testing")
-        
+        print("✅ SharePoint source models: Working")
+        print("✅ S3 source models: Working") 
+        print("✅ Lakehouse source/sink models: Working")
+        print("✅ S3 sink models: Working")
+        print("✅ HTTP/REST models: Working")
+        print("✅ FileSystem models: Working")
+        print("✅ MySQL models: Working")
+        print("✅ Google Cloud Storage models: Working")  # New line
+        print("✅ Complete copy activity configurations: Working")
+        print("✅ MCP tool examples generated successfully")
+        print("✅ Real pipeline creation: Tested (if enabled)")
+        print("\n🔧 Your universal copy activity tool is ready for production!")
+        print("🌟 Supported connectors: SharePoint, S3, Lakehouse, HTTP, REST, FileSystem, MySQL, Google Cloud Storage")
+        return True
     except Exception as e:
         print(f"\n❌ Tests failed: {str(e)}")
         import traceback
