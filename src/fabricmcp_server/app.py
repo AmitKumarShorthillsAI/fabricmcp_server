@@ -86,6 +86,10 @@ def register_tools() -> None:
         pipelines.register_pipeline_tools(mcp_app)
         logger.info("Successfully registered 'pipelines' tools.")
 
+        from .tools import lakehouses
+        lakehouses.register_lakehouse_tools(mcp_app)
+        logger.info("Successfully registered 'lakehouses' tools.")
+
         from .tools import universal_copy_activity
         universal_copy_activity.register_universal_copy_tools(mcp_app)
         logger.info("Successfully registered 'universal_copy_activity' tools.")
